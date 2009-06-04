@@ -1,0 +1,13 @@
+name:           TextBook
+version:        0.0
+license:        BSD3
+license-file:   LICENSE
+author:         textbook@lists.facebook.com
+synopsis:       command-line access to facebook
+build-depends:  FUtil, base, nano-md5
+build-type:     Simple
+Cabal-Version:  >= 1.2
+
+executable:     fb
+hs-source-dirs: src
+main-is:        Main.hs
