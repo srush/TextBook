@@ -1,22 +1,28 @@
 module Main where
 
 import Control.Monad
+import Data.Binary
 import Data.List
+import Data.Time
 import FUtil
-import System.Environment
 import System.Console.GetOpt
+import System.Directory
+import System.Environment
+import System.FilePath
 
 version = [0, 0]
 
 data Options = Options {
   optHelp :: Bool,
-  optVersion :: Bool
+  optVersion :: Bool,
+  optReFetchCached :: Bool
 }
 
 defOpts :: Options
 defOpts = Options {
   optHelp = False,
-  optVersion = False
+  optVersion = False,
+  optReFetchCached = False
 }
 
 options :: [OptDescr (Options -> Options)]
@@ -24,7 +30,9 @@ options = [
   Option "h" ["help"] (NoArg (\ o -> o {optHelp = True}))
     "Show this help",
   Option "" ["version"] (NoArg (\ o -> o {optVersion = True}))
-    "Show version"
+    "Show version",
+  Option "c" ["re-fetch-cached"] (NoArg (\ o -> o {optReFetchCached = True}))
+    "Re-fetch any cached data"
   {-
   Option "" [""] (ReqArg (\ a o -> o {opt = read a}) "")
     ""
@@ -37,6 +45,7 @@ options = [
 
 fbCmds = [
   fbShowCmds,
+  fbFriends,
   fbHi,
   fbHome,
   fbProfile,
@@ -47,30 +56,57 @@ fbCmds = [
 data FbCmd = FbCmd {
   fbCmdName :: String,
   fbCmdHelp :: String,
-  fbCmdFunc :: IO ()
+  fbCmdFunc :: Options -> IO ()
   }
-
-fbHome = FbCmd "home" "Show home page information" $
-  error "TODO home"
-
-fbProfile = FbCmd "poke" "Check pokes or poke someone" $
-  error "TODO poke"
-
-fbPoke = FbCmd "profile" "Show profile page information" $
-  error "TODO profile"
-
-fbStatus = FbCmd "status" "Get/set your status" $
-  error "TODO status"
 
 -- maybe this is a silly way to do this.
 -- after all, we could extract the command list from help.
 -- anyway, this was easy.
 fbShowCmds =
-  FbCmd "commands" "Show list of all commands (for tab-completion)" .
+  FbCmd "commands" "Show list of all commands (for tab-completion)" . const .
   putStr . unlines $ map fbCmdName fbCmds
 
-fbHi = FbCmd "hi" "Just for testing/lols" $
+ensureDir dir = unlessM (doesDirectoryExist dir) $ createDirectory dir
+
+day = error "todo day"
+
+getFriends :: IO [Int]
+getFriends = error "todo getFriends"
+
+cache :: (Binary a) => Options -> String -> UTCTime -> IO a -> IO a
+cache opts name time f = do
+  when (optReFetchCached opts) $ do
+    home <- getHomeDirectory
+    let textbookDir = home </> ".TextBook"
+        cacheDir = textbookDir </> "cache"
+        expFN = name ++ ".exp"
+        binFN = name ++ ".bin"
+    ensureDir textbookDir
+    ensureDir cacheDir
+    doesFileExist expFN >>= \ t -> if t
+      then decodeFile expFN
+      else error "wat" --return Nothing
+  return $ error "todo"
+
+fbFriends = FbCmd "friends" "Show list of all friends" $ \ opts -> do
+  friends <- cache opts "friends" day getFriends
+  -- fix this
+  print friends
+
+fbHi = FbCmd "hi" "Just for testing/lols" . const $
   print "hi"
+
+fbHome = FbCmd "home" "Show home page information" . const $
+  error "TODO home"
+
+fbProfile = FbCmd "poke" "Check pokes or poke someone" . const $
+  error "TODO poke"
+
+fbPoke = FbCmd "profile" "Show profile page information" . const $
+  error "TODO profile"
+
+fbStatus = FbCmd "status" "Get/set your status" . const $
+  error "TODO status"
 
 commandList :: String
 commandList = intercalate "\n" . ("commands:":) . spaceTable $
@@ -94,7 +130,7 @@ main = do
       else do
         let (cmd:args) = cmdAndArgs
         case lookupCmd cmd of
-          [c] -> fbCmdFunc c
+          [c] -> fbCmdFunc c opts
           []  -> error $ "no commands matched: " ++ cmd ++ "\n" ++
             usageInfo usage options ++ commandList
           cs  -> error $ "command prefix is ambiguous: " ++ cmd ++ ": " ++
