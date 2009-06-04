@@ -36,6 +36,7 @@ options = [
   ]
 
 fbCmds = [
+  fbShowCmds,
   fbHi,
   fbHome,
   fbProfile,
@@ -52,14 +53,21 @@ data FbCmd = FbCmd {
 fbHome = FbCmd "home" "Show home page information" $
   error "TODO home"
 
-fbProfile = FbCmd "poke" "Page someone" $
+fbProfile = FbCmd "poke" "Check pokes or poke someone" $
   error "TODO poke"
 
 fbPoke = FbCmd "profile" "Show profile page information" $
   error "TODO profile"
 
-fbStatus = FbCmd "status" "Set your status" $
+fbStatus = FbCmd "status" "Get/set your status" $
   error "TODO status"
+
+-- maybe this is a silly way to do this.
+-- after all, we could extract the command list from help.
+-- anyway, this was easy.
+fbShowCmds =
+  FbCmd "commands" "Show list of all commands (for tab-completion)" .
+  putStr . unlines $ map fbCmdName fbCmds
 
 fbHi = FbCmd "hi" "Just for testing/lols" $
   print "hi"
