@@ -1,11 +1,15 @@
 module Main where
 
 import Control.Monad
+import Control.Monad.Reader
 import Data.Binary
 import Data.List
 import Data.Time
 import FUtil
 import System.Console.GetOpt
+import qualified Client.Facebook as Client
+import qualified Client.Login as Login
+import Friends
 import System.Directory
 import System.Environment
 import System.FilePath
@@ -43,6 +47,14 @@ options = [
   -}
   ]
 
+baseConfig = Client.FacebookConfig 
+             {Client.apiKey = "80d6cc5ca397c92c9cd41cfe09380b9d",
+              Client.secretKey = "64f66142cb325b26cc535f5bf2646957", 
+              Client.endPoint = "http://api.facebook.com/restserver.php"}
+
+fb = Client.runFacebook baseConfig 
+
+
 fbCmds = [
   fbShowCmds,
   fbFriends,
@@ -58,6 +70,7 @@ data FbCmd = FbCmd {
   fbCmdHelp :: String,
   fbCmdFunc :: Options -> IO ()
   }
+
 
 -- maybe this is a silly way to do this.
 -- after all, we could extract the command list from help.
@@ -92,6 +105,13 @@ fbFriends = FbCmd "friends" "Show list of all friends" $ \ opts -> do
   friends <- cache opts "friends" day getFriends
   -- fix this
   print friends
+
+
+--fbFriends = FbCmd "friends" "Get your friend list" $
+--  fb $ do 
+--    friends <- fetchFriends 4842
+--    mapM_ (\(Friend name uid) -> liftIO $ print name) friends 
+
 
 fbHi = FbCmd "hi" "Just for testing/lols" . const $
   print "hi"
