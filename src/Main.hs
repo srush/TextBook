@@ -1,10 +1,14 @@
 module Main where
 
 import Control.Monad
+import Control.Monad.Reader
 import Data.List
 import FUtil
 import System.Environment
 import System.Console.GetOpt
+import qualified Client.Facebook as Client
+import qualified Client.Login as Login
+import Friends
 
 version = [0, 0]
 
@@ -35,6 +39,14 @@ options = [
   -}
   ]
 
+baseConfig = Client.FacebookConfig 
+             {Client.apiKey = "80d6cc5ca397c92c9cd41cfe09380b9d",
+              Client.secretKey = "64f66142cb325b26cc535f5bf2646957", 
+              Client.endPoint = "http://api.facebook.com/restserver.php"}
+
+fb = Client.runFacebook baseConfig 
+
+
 fbCmds = [
   fbShowCmds,
   fbHi,
@@ -61,6 +73,11 @@ fbPoke = FbCmd "profile" "Show profile page information" $
 
 fbStatus = FbCmd "status" "Get/set your status" $
   error "TODO status"
+
+fbFriends = FbCmd "friends" "Get your friend list" $
+  fb $ do 
+    friends <- fetchFriends 4842
+    mapM_ (\(Friend name uid) -> liftIO $ print name) friends 
 
 -- maybe this is a silly way to do this.
 -- after all, we could extract the command list from help.

@@ -43,8 +43,7 @@ status_set status =
 
 
 fql_query :: String -> FacebookM String
-fql_query query =
-    callMethod "facebook.fql.query" [("query", query)]
+fql_query query = callMethod "facebook.fql.query" [("query", query)]
 
 auth_createToken :: FacebookM String
 auth_createToken  = do
