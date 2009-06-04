@@ -4,7 +4,7 @@ license:        BSD3
 license-file:   LICENSE
 author:         textbook@lists.facebook.com
 synopsis:       command-line access to facebook
-build-depends:  FUtil, base, nano-md5, directory, filepath, time, binary
+build-depends:  FUtil, base, nano-md5, directory, filepath, time, binary, json, mtl, HSH, bytestring, time, pureMD5, http-wget
 build-type:     Simple
 Cabal-Version:  >= 1.2
 
