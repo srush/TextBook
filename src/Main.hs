@@ -36,6 +36,7 @@ options = [
   ]
 
 fbCmds = [
+  fbHi,
   fbHome,
   fbProfile,
   fbPoke,
@@ -49,33 +50,44 @@ data FbCmd = FbCmd {
   }
 
 fbHome = FbCmd "home" "Show home page information" $
-  error "TODO"
+  error "TODO home"
 
 fbProfile = FbCmd "poke" "Page someone" $
-  error "TODO"
+  error "TODO poke"
 
 fbPoke = FbCmd "profile" "Show profile page information" $
-  error "TODO"
+  error "TODO profile"
 
 fbStatus = FbCmd "status" "Set your status" $
-  error "TODO"
+  error "TODO status"
+
+fbHi = FbCmd "hi" "Just for testing/lols" $
+  print "hi"
 
 commandList :: String
 commandList = intercalate "\n" . ("commands:":) . spaceTable $
   map (\ c -> ["  ", fbCmdName c, " ", fbCmdHelp c]) fbCmds
 
+lookupCmd :: String -> [FbCmd]
+lookupCmd cmd = filter ((cmd `isPrefixOf`) . fbCmdName) fbCmds
+
 main :: IO ()
 main = do
   let usage = "usage: fb COMMAND [ARGS]"
   args <- getArgs
-  (opts, commandAndArgs) <- case getOpt Permute options args of
+  (opts, cmdAndArgs) <- case getOpt Permute options args of
     (o, n, [])   -> return (foldl (flip id) defOpts o, n)
     (_, _, errs) -> error $
       concat errs ++ usageInfo usage options ++ commandList
   if optVersion opts
     then putStrLn . intercalate "." $ map show version
-    else if null commandAndArgs || optHelp opts
+    else if null cmdAndArgs || optHelp opts
       then putStrLn $ usageInfo usage options ++ commandList
       else do
-        let (command:args) = commandAndArgs
-        print "hi"
+        let (cmd:args) = cmdAndArgs
+        case lookupCmd cmd of
+          [c] -> fbCmdFunc c
+          []  -> error $ "no commands matched: " ++ cmd ++ "\n" ++
+            usageInfo usage options ++ commandList
+          cs  -> error $ "command prefix is ambiguous: " ++ cmd ++ ": " ++
+            intercalate " " (map fbCmdName cs)
