@@ -13,6 +13,7 @@ import Friends
 import System.Directory
 import System.Environment
 import System.FilePath
+import qualified HSH as HSH
 
 version = [0, 0]
 
@@ -52,23 +53,27 @@ baseConfig = Client.FacebookConfig
               Client.secretKey = "64f66142cb325b26cc535f5bf2646957", 
               Client.endPoint = "http://api.facebook.com/restserver.php"}
 
+
 fb = Client.runFacebook baseConfig 
 
 
 fbCmds = [
   fbShowCmds,
   fbFriends,
+  fbFriends2,
   fbHi,
   fbHome,
   fbProfile,
   fbPoke,
-  fbStatus
+  fbStatus,
+  fbInit,
+  fbProfilePic
   ]
 
 data FbCmd = FbCmd {
   fbCmdName :: String,
   fbCmdHelp :: String,
-  fbCmdFunc :: Options -> IO ()
+  fbCmdFunc :: (Options, [String]) ->  Client.FacebookM ()
   }
 
 
@@ -77,18 +82,21 @@ data FbCmd = FbCmd {
 -- anyway, this was easy.
 fbShowCmds =
   FbCmd "commands" "Show list of all commands (for tab-completion)" . const .
-  putStr . unlines $ map fbCmdName fbCmds
+  liftIO . putStr . unlines $ map fbCmdName fbCmds
 
 ensureDir dir = unlessM (doesDirectoryExist dir) $ createDirectory dir
 
 day = error "todo day"
 
-getFriends :: IO [Int]
+getFriends :: Client.FacebookM [Int]
 getFriends = error "todo getFriends"
 
-cache :: (Binary a) => Options -> String -> UTCTime -> IO a -> IO a
-cache opts name time f = do
-  when (optReFetchCached opts) $ do
+getUser :: Client.FacebookM Integer
+getUser = Login.showLoginScreen
+
+cache :: (Binary a) => Options -> String -> UTCTime -> Client.FacebookM a -> Client.FacebookM a
+cache opts name time f = do 
+  when (optReFetchCached opts) $ liftIO $ do
     home <- getHomeDirectory
     let textbookDir = home </> ".TextBook"
         cacheDir = textbookDir </> "cache"
@@ -99,22 +107,32 @@ cache opts name time f = do
     doesFileExist expFN >>= \ t -> if t
       then decodeFile expFN
       else error "wat" --return Nothing
-  return $ error "todo"
+  f
 
-fbFriends = FbCmd "friends" "Show list of all friends" $ \ opts -> do
+
+fbInit = FbCmd "init" "Initialize a facebook account" $ \ (opts,args) -> do 
+           user  <- cache opts "user" day getUser
+           liftIO $ print user
+
+fbFriends = FbCmd "friends" "Show list of all friends" $ \ (opts, args) -> do
   friends <- cache opts "friends" day getFriends
   -- fix this
-  print friends
+  liftIO $ print friends
 
 
---fbFriends = FbCmd "friends" "Get your friend list" $
---  fb $ do 
---    friends <- fetchFriends 4842
---    mapM_ (\(Friend name uid) -> liftIO $ print name) friends 
+fbFriends2 = FbCmd "friends2" "Get your friend list" $ \(opts, args) ->  do 
+    user  <- cache opts "user" day getUser
+    friends <- fetchFriends user
+    liftIO $ mapM_ (\(Friend name uid _) ->  print name) friends 
+
+fbProfilePic = FbCmd "profilepic" "See a profie pic" $ \(opts, [user])-> do 
+    _  <- cache opts "user" day getUser
+    friend <-  fetchFriend user
+    liftIO $ HSH.runIO ("firefox \"" ++ pic_big friend ++ "\"")
 
 
 fbHi = FbCmd "hi" "Just for testing/lols" . const $
-  print "hi"
+  liftIO $ print "hi"
 
 fbHome = FbCmd "home" "Show home page information" . const $
   error "TODO home"
@@ -125,8 +143,10 @@ fbProfile = FbCmd "poke" "Check pokes or poke someone" . const $
 fbPoke = FbCmd "profile" "Show profile page information" . const $
   error "TODO profile"
 
-fbStatus = FbCmd "status" "Get/set your status" . const $
-  error "TODO status"
+fbStatus = FbCmd "status" "Get/set your status" $ \(opts, [status])-> do 
+    _  <- cache opts "user" day getUser
+    friend <-  Client.status_set status
+    liftIO $ print $ "Status set to: " ++ status
 
 commandList :: String
 commandList = intercalate "\n" . ("commands:":) . spaceTable $
@@ -150,7 +170,7 @@ main = do
       else do
         let (cmd:args) = cmdAndArgs
         case lookupCmd cmd of
-          [c] -> fbCmdFunc c opts
+          [c] -> fb $ fbCmdFunc c (opts, args)
           []  -> error $ "no commands matched: " ++ cmd ++ "\n" ++
             usageInfo usage options ++ commandList
           cs  -> error $ "command prefix is ambiguous: " ++ cmd ++ ": " ++

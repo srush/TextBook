@@ -11,7 +11,6 @@ import qualified Data.ByteString.Lazy.Char8 as BS
 import Debug.Trace 
 import Data.Function
 import Data.List
-import Data.Data
 import Text.JSON.Generic
 import Text.JSON
 

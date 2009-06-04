@@ -24,13 +24,15 @@ waitForUser url = do
     getLine
     return ()
 
-showLoginScreen :: FacebookM ()
+showLoginScreen :: FacebookM (Integer)
 showLoginScreen = do
   config <- ask
   token <- auth_createToken
   liftIO $ waitForUser $ createLoginUrl config token
   session <- auth_getSession token
   put (SessionConfig $ Just $ session)
+  return $ uid session
+
 
 askPermission :: String -> FacebookM ()
 askPermission perm = do
