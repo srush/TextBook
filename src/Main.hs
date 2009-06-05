@@ -175,7 +175,11 @@ commandList = intercalate "\n" . ("commands:":) . spaceTable $
   map (\ c -> ["  ", fbCmdName c, " ", fbCmdHelp c]) fbCmds
 
 lookupCmd :: String -> [FbCmd]
-lookupCmd cmd = filter ((cmd `isPrefixOf`) . fbCmdName) fbCmds
+lookupCmd cmd = case filter ((== cmd) . fbCmdName) prefixMatches of
+  [match] -> [match]
+  _ -> prefixMatches
+  where
+  prefixMatches = filter ((cmd `isPrefixOf`) . fbCmdName) fbCmds
 
 main :: IO ()
 main = do
