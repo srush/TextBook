@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveDataTypeable, ExistentialQuantification #-}
 
 module Client.Facebook where 
 
@@ -29,7 +29,13 @@ data SessionConfig = SessionConfig {
 
 type FacebookM = StateT SessionConfig (ReaderT FacebookConfig IO)
 
-type Params = [(String, String)]
+data MkJson = forall a. JSON a => MkJson a | NoEncode String
+
+js :: (JSON a) => a -> MkJson 
+js = MkJson
+
+type Params = [(String, MkJson)]
+type EncParams = [(String, String)]
 
 runFacebook :: FacebookConfig -> FacebookM a -> IO a
 runFacebook config facebook = 
@@ -38,11 +44,11 @@ runFacebook config facebook =
 
 status_set :: String -> FacebookM String
 status_set status = 
-    callMethod "facebook.status.set" [("status", status)]
+    callMethod "facebook.status.set" [("status", js status)]
 
 
 fql_query :: String -> FacebookM String
-fql_query query = callMethod "facebook.fql.query" [("query", query)]
+fql_query query = callMethod "facebook.fql.query" [("query", js query)]
 
 auth_createToken :: FacebookM String
 auth_createToken  = do
@@ -57,7 +63,9 @@ data GetSession = GetSession
 
 auth_getSession :: String -> FacebookM GetSession
 auth_getSession token  = do
-    session <- callMethod "facebook.auth.getSession" [("auth_token", token)]
+    session <- callMethod "facebook.auth.getSession" 
+               [("auth_token", NoEncode token),
+                ("generate_session_secret", js True)]
     return $ decodeJSON session 
 
 friends_get :: FacebookM [Integer]
@@ -65,7 +73,7 @@ friends_get  = do
   friends <- callMethod "facebook.friends.get" []
   return $ decodeJSON friends
 
-addStandardParams :: String -> Params -> FacebookM Params 
+addStandardParams :: String -> EncParams -> FacebookM EncParams 
 addStandardParams method params = do
   config <- ask
   sessionHolder <- get
@@ -78,24 +86,29 @@ addStandardParams method params = do
   return $ maybe base (\s -> ("session_key", session_key s):base)
         (session sessionHolder)
 
-postRequest :: String -> Params -> FacebookM (Maybe String)
+postRequest :: String -> EncParams -> FacebookM (Maybe String)
 postRequest endPoint params = 
     liftIO $ wget endPoint [] params
 
-callMethod :: String -> Params -> FacebookM String
+encodeParams = map enc 
+    where
+      enc (s, MkJson p) =  (s, encode p) 
+      enc (s, NoEncode p ) = (s, p)
+callMethod ::  String -> Params -> FacebookM String 
 callMethod method params = do
+  let encodedParams = encodeParams params
   config <- ask
   sessHolder <- get
-  params' <- addStandardParams method params
+  params' <- addStandardParams method $ trace (show encodedParams)  encodedParams
   let signature = sign params' $ 
                   maybe (secretKey config) secret (session sessHolder)
   liftIO (print (signature ++ "\n"))
   let finalParams = ("sig", signature) : params'
   Just result_str <- postRequest (endPoint config) finalParams
   liftIO $ print result_str
-  return  $ result_str
+  return $ result_str
   
-sign ::  Params -> String -> String
+sign ::  EncParams -> String -> String
 sign params secret =
     show $ md5 $ BS.pack $ trace all all
         where 
