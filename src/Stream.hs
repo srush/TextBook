@@ -16,9 +16,9 @@ import FUtil
     where JSString jsstring = fromJust $ get_field obj key
 
 (!^) :: JSObject JSValue -> String -> Integer
-(!^) obj key = round rat
-    where JSRational _ rat = fromJust $ get_field obj key
-
+(!^) obj key = case fromJust $ get_field obj key of 
+                JSRational _ rat -> round rat 
+                JSString jsstring -> read $ fromJSString $ jsstring 
  
 fetchStream :: UID -> FacebookM ([JSValue], M.Map Integer String)
 fetchStream uid =  do
