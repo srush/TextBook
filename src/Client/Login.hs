@@ -8,15 +8,17 @@ import Control.Concurrent
 import Debug.Trace
 import Text.JSON
 import System.Process 
+
 createLoginUrl :: FacebookConfig -> String
 createLoginUrl config  = 
     "http://www.facebook.com/login.php?api_key=" ++ 
      apiKey config ++ "&v=" ++ show version 
      ++"&fbconnect=1&connect_display=touch"
 
-createExtensionUrl apiKey perm =     
-    "http://www.facebook.com/authorize.php?api_key=" ++ 
+createExtensionUrl apiKey perm = 
+    "http://m.facebook.com/authorize.php?api_key=" ++ 
      apiKey ++ "&v=1.0&ext_perm=" ++ perm
+     ++ "&next=http://fbplatform.mancrushonmcslee.com/textbook/permission.php"
 
 waitForUser :: String -> IO ()
 waitForUser url = do 
@@ -26,23 +28,30 @@ waitForUser url = do
     getLine
     return ()
 
+
+showBrowser :: String -> Maybe String -> IO () 
+showBrowser url useragent = do
+    system $ "lynx -accept-all-cookies "
+               ++ maybe "" ("--useragent="++) useragent
+               ++" -error-file=\"/tmp/fblynx\" \"" ++ url ++ "\""
+    return ()
+
 waitForLogin :: String -> IO(String)
 waitForLogin url = do 
     HSH.runIO "rm /tmp/fblynx;touch /tmp/fblynx"
-    system $ "lynx -accept-all-cookies --useragent=mozilla -error-file=\"/tmp/fblynx\" \"" ++ url ++ "\""
+    showBrowser url $ Just "mozilla"
     auth_token <- HSH.runSL "cat /tmp/fblynx | grep auth_token | sed 's/.*auth_token=\\(\\w*\\) .*/\\1/'"
-    return $ trace (show auth_token) auth_token -- strip the newline
+    return auth_token -- strip the newline
 
-showLoginScreen :: FacebookM (Integer)
+showLoginScreen :: FacebookM (GetSession)
 showLoginScreen = do
   config <- ask
   token <- liftIO $ waitForLogin $ createLoginUrl config
   session <- auth_getSession token
-  put (SessionConfig $ Just $ session)
-  return $ uid session
+  return session
 
 
 askPermission :: String -> FacebookM ()
 askPermission perm = do
     config <- ask
-    liftIO $ waitForUser $ createExtensionUrl (apiKey config) perm
+    liftIO $ showBrowser (createExtensionUrl (apiKey config) perm) Nothing

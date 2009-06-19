@@ -12,13 +12,25 @@ import System.Console.GetOpt
 import qualified Client.Facebook as Client
 import qualified Client.Login as Login
 import Friends
+import qualified Events as E
+import qualified FriendFast as FF
+import Stream
+import Data.Char
 import System.Directory
 import System.Environment
 import System.FilePath
+import Text.Printf
 import qualified HSH as HSH
-
+import System.Process 
+import Data.Map ((!))
+import Text.JSON.Types
+import System.Process 
+import System.IO
+import Data.Maybe (mapMaybe)
 version = [0, 0]
 
+type Permission = String
+type Uid = Integer
 data Options = Options {
   optHelp :: Bool,
   optVersion :: Bool,
@@ -53,23 +65,25 @@ options = [
 baseConfig = Client.FacebookConfig
              {Client.apiKey = "80d6cc5ca397c92c9cd41cfe09380b9d",
               Client.secretKey = "64f66142cb325b26cc535f5bf2646957",
-              Client.endPoint = "http://api.facebook.com/restserver.php"}
+              Client.endPoint = "http://api.srush2.devrs006.facebook.com/restserver.php"}
 
 
 fb = Client.runFacebook baseConfig
 
 
 fbCmds = [
+  fbInit,
   fbShowCmds,
   fbFriends,
-  fbFriends2,
-  fbHi,
-  fbHome,
   fbProfile,
-  fbPoke,
+  fbProfilePic,
+  fbBirthday,
+  fbFinger,
+  fbStream,
+  fbUserStream,
+  fbEvent,
   fbStatus,
-  fbInit,
-  fbProfilePic
+  fbWall
   ]
 
 data FbCmd = FbCmd {
@@ -131,27 +145,123 @@ getFriends = do
   return [4, 6, round t]
 -}
 
-getUser :: Client.FacebookM Integer
-getUser = Login.showLoginScreen
+
+requestSession :: Client.FacebookM Client.GetSession
+requestSession = Login.showLoginScreen 
+
+ensureLogin :: Client.FacebookM Integer
+ensureLogin = do
+  -- todo, deal with opts
+  session <- cache defOpts "session" day requestSession
+  Client.addSession session
+  Just user <- Client.getUser
+  return user
+
+
+requestPermission perm = Login.askPermission perm
+
+ensurePermission :: Permission -> Client.FacebookM ()
+ensurePermission perm = do 
+  -- todo, deal with opts
+  cache defOpts ("perm1:"++perm) day $ requestPermission perm
+
 
 fbInit = FbCmd "init" "Initialize a facebook account" $ \ (opts,args) -> do
-  user <- cache opts "user" day getUser
-  io $ print user
+  user <- ensureLogin
+  io $ printf "%d \n" user
 
-fbFriends = FbCmd "friends" "Show list of all friends" $ \ (opts, args) -> do
-  friends <- cache opts "friends" day getFriends
+--fbFriends = FbCmd "friends" "Show list of all friends" $ \ (opts, args) -> do
+  --user <- ensureLogin
+  --friends <- getFriends -- cache opts "friends" day
   -- fix this
-  io $ print friends
+  --io $ print friends
 
-fbFriends2 = FbCmd "friends2" "Get your friend list" $ \ (opts, args) -> do
-  user <- cache opts "user" day getUser
-  friends <- fetchFriends user
-  io $ mapM_ (\ (Friend name uid _) ->  print name) friends
+fbFriends = FbCmd "friends" "Get your friend list" $ \ (opts, args) -> do
+  user <- ensureLogin
+  friends <- FF.fetchFriendsFast user
+  io $ mapM_ (printf "Name: %s\n" . FF.name) friends
 
-fbProfilePic = FbCmd "profilepic" "See a profie pic" $ \ (opts, [user]) -> do
-  cache opts "user" day getUser
-  friend <- fetchFriend user
-  io $ HSH.runIO ("firefox \"" ++ pic_big friend ++ "\"")
+
+whenJust = maybe ([]) 
+
+ddize :: [(String,String)] -> String
+ddize assoc =
+  printf "<dl>" ++
+  (concat $ map (\(a,b) -> printf "<dt>%s</dt><dd>%s</dd>" a b ) assoc) ++  
+  printf "</dl>"
+
+renderFriend :: Friend -> [(String,String)]
+renderFriend friend = 
+  
+  [("Name:", name friend)] ++
+  [("Uid:",  show $(uid friend))] ++
+  whenJust (\f->  [("Birthday:",  f)])  (birthday friend) ++ 
+  whenJust (\f->  [("Music:",  f)])  (music friend) ++ 
+  whenJust (\f->  [("TV:",  f)])  (tv friend) ++ 
+  whenJust (\f->  [("Books:",  f)])  (books friend) ++ 
+  whenJust (\f->  [("Quotations:",  f)])  (quotes friend) ++ 
+  whenJust (\f->  [("About:",  f)])  (about_me friend)
+  
+renderEvent event = 
+  [("Name:",  E.name event)] ++
+  whenJust (\f-> [("Tagline:", f)]) (E.tagline event) ++ 
+  whenJust (\f-> [("Description:", f)]) (E.description event) 
+  
+
+nameToUid user fname = 
+    if isDigit $ head fname then 
+        return $ Just $ read fname 
+    else do
+  trie <- FF.fetchFriendStorage user
+  case FF.getFriendsWithName trie fname of 
+    [(_, f)] -> return $ Just $ FF.uid f
+    [] -> do 
+      io $ putStrLn $ "No friends name " ++ fname
+      return Nothing
+    ls -> do
+      io $ putStrLn ("Many users with names starting with " ++ fname) 
+      io $ mapM_ (\(_,f) -> printf "%d - %s\n"  (FF.uid f) (FF.name f)) $ ls
+      return Nothing
+
+
+showHTML rendered = do 
+  file <- openFile "/tmp/fbtextbook" WriteMode
+  hPutStrLn file $ rendered
+  hClose file
+  system "cat /tmp/fbtextbook | w3m -T text/html"
+  return () 
+
+
+fbFinger = FbCmd "finger" "Get a friend's info" $ \ (opts, [fname]) -> do
+  user <- ensureLogin
+  uid <- nameToUid user fname
+  case uid of 
+    Just uid -> do 
+        friend <- fetchFriend uid
+        io $ showHTML $ ddize $ renderFriend friend
+    Nothing -> 
+        return () 
+
+fbEvent = FbCmd "events" "Get all my events" $ \ (opts, _) -> do
+  user <- ensureLogin
+  events <- E.fetchEvents user
+  io $ showHTML $ concat $ map(\e -> (ddize (renderEvent e) ++  "<br>")) events
+
+
+fbProfilePic = FbCmd "profilepic" "See a profie pic" $ \ (opts, [fname]) -> do
+  user <- ensureLogin
+  fuid <- nameToUid user fname
+  case fuid of 
+    Just fuid -> do 
+             friend <- fetchFriend fuid
+             io $ case pic_big friend of 
+                 Just pic -> do {system ("jp2a --colors \"" ++ pic ++ "\"");return ()}
+                 Nothing  -> putStrLn "No pic available"
+    Nothing -> 
+        return () 
+
+
+
 
 fbHi = FbCmd "hi" "Just for testing/lols" . const $
   io $ print "hi"
@@ -165,10 +275,55 @@ fbProfile = FbCmd "poke" "Check pokes or poke someone" . const $
 fbPoke = FbCmd "profile" "Show profile page information" . const $
   error "TODO profile"
 
-fbStatus = FbCmd "status" "Get/set your status" $ \ (opts, [status]) -> do
-  cache opts "user" day getUser
-  friend <- Client.status_set status
-  io $ print $ "Status set to: " ++ status
+fbWall = FbCmd "wall" "Write on a friends wall" $ \ (opts, [fname, message]) -> do
+  user <- ensureLogin
+  ensurePermission "publish_stream"
+  uid <- nameToUid user fname 
+  case uid of 
+    Just uid -> do
+        Client.stream_publish message $ Just uid
+        io $ printf "Wrote \"%s\" on to: %s\n" message uid
+    Nothing -> return ()
+
+fbStatus = FbCmd "status" "Set your status" $ \ (opts, [status]) -> do
+  user <- ensureLogin
+  ensurePermission "publish_stream"
+  Client.stream_publish status Nothing
+  io $ printf "Status set to: %s\n" status
+
+fbStream = FbCmd "stream" "Get your stream" $ \ (opts, _) -> do
+  user <- ensureLogin
+  ensurePermission "read_stream"
+  (stream, idmap) <- fetchStream user
+  
+  io $ showHTML $ ddize $ mapMaybe (format idmap) stream
+    where format idmap (JSObject sobj) = case get_field sobj "message" of 
+                                 Just (JSString m) -> Just $ ((idmap ! (sobj !^ "actor_id")), (fromJSString m))
+                                 _ -> Nothing
+          format  _ _= Nothing
+
+
+fbUserStream = FbCmd "userstream" "Get a users stream" $ \ (opts, [fname]) -> do
+  user <- ensureLogin
+  ensurePermission "read_stream"
+  uid <- nameToUid user fname 
+  case uid of 
+    Just uid -> do
+        (stream, idmap) <- fetchUserStream uid
+        io $ showHTML $ ddize $ mapMaybe (format idmap) stream
+    Nothing -> return ()
+   where format idmap (JSObject sobj) = case get_field sobj "message" of 
+                                               Just (JSString m) -> Just $ ((idmap ! (sobj !^ "actor_id")), (fromJSString m))
+                                               _ -> Nothing
+         format  _ _= Nothing
+
+
+fbBirthday = FbCmd "birthday" "Get birthdays for a given day" $ \ (opts, [date]) -> do
+  user <- ensureLogin
+  friends <- fetchFriends user
+  let friends' = filter (maybe False (isPrefixOf date) . birthday) friends
+  io $ mapM_ (printf "Birthday: %s\n" . show .birthday) friends'
+
 
 commandList :: String
 commandList = intercalate "\n" . ("commands:":) . spaceTable $

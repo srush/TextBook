@@ -5,7 +5,7 @@ license-file:   LICENSE
 author:         textbook@lists.facebook.com
 synopsis:       command-line access to facebook
 build-depends:  FUtil, base, directory, filepath, time, binary, json, mtl, HSH,
-                bytestring, time, pureMD5, http-wget, process
+                bytestring, bytestring-trie,  time, pureMD5, http-wget, process, derive, containers
 build-type:     Simple
 Cabal-Version:  >= 1.2
 
