@@ -38,7 +38,7 @@ showBrowser url useragent = do
 
 waitForLogin :: String -> IO(String)
 waitForLogin url = do 
-    HSH.runIO "rm /tmp/fblynx;touch /tmp/fblynx"
+    HSH.runIO "rm /tmp/fblynx;touch /tmp/fblynx;chmod 777 /tmp/fblynx"
     showBrowser url $ Just "mozilla"
     auth_token <- HSH.runSL "cat /tmp/fblynx | grep auth_token | sed 's/.*auth_token=\\(\\w*\\) .*/\\1/'"
     return auth_token -- strip the newline
