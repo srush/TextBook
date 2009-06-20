@@ -64,7 +64,7 @@ options = [
 
 baseConfig = Client.FacebookConfig
              {Client.apiKey = "80d6cc5ca397c92c9cd41cfe09380b9d",
-              Client.secretKey = "64f66142cb325b26cc535f5bf2646957",
+              Client.secretKey = "",
               Client.endPoint = "http://api.srush2.devrs006.facebook.com/restserver.php"}
 
 
