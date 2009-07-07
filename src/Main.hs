@@ -1,32 +1,33 @@
 module Main where
 
 import Control.Applicative
+import Control.Arrow
 import Control.Monad
 import Control.Monad.Reader
 import Data.Binary
+import Data.Char
 import Data.List
+import Data.Map ((!))
+import Data.Maybe (mapMaybe)
 import Data.Time
 import Data.Time.Clock.POSIX
 import FUtil
-import System.Console.GetOpt
-import qualified Client.Facebook as Client
-import qualified Client.Login as Login
 import Friends
-import qualified Events as E
-import qualified FriendFast as FF
 import Stream
-import Data.Char
+import System.Console.GetOpt
 import System.Directory
 import System.Environment
 import System.FilePath
-import Text.Printf
-import qualified HSH as HSH
-import System.Process 
-import Data.Map ((!))
-import Text.JSON.Types
-import System.Process 
 import System.IO
-import Data.Maybe (mapMaybe)
+import System.Process
+import System.Process
+import Text.JSON.Types
+import Text.Printf
+import qualified Client.Facebook as Client
+import qualified Client.Login as Login
+import qualified Events as E
+import qualified FriendFast as FF
+import qualified HSH as HSH
 version = [0, 0]
 
 type Permission = String
@@ -145,9 +146,8 @@ getFriends = do
   return [4, 6, round t]
 -}
 
-
 requestSession :: Client.FacebookM Client.GetSession
-requestSession = Login.showLoginScreen 
+requestSession = Login.showLoginScreen
 
 ensureLogin :: Client.FacebookM Integer
 ensureLogin = do
@@ -161,7 +161,7 @@ ensureLogin = do
 requestPermission perm = Login.askPermission perm
 
 ensurePermission :: Permission -> Client.FacebookM ()
-ensurePermission perm = do 
+ensurePermission perm = do
   -- todo, deal with opts
   cache defOpts ("perm1:"++perm) day $ requestPermission perm
 
@@ -181,66 +181,64 @@ fbFriends = FbCmd "friends" "Get your friend list" $ \ (opts, args) -> do
   friends <- FF.fetchFriendsFast user
   io $ mapM_ (printf "Name: %s\n" . FF.name) friends
 
-
-whenJust = maybe ([]) 
-
 ddize :: [(String,String)] -> String
 ddize assoc =
   printf "<dl>" ++
-  (concat $ map (\(a,b) -> printf "<dt>%s</dt><dd>%s</dd>" a b ) assoc) ++  
+  (concat $ map (\(a,b) -> printf "<dt>%s</dt><dd>%s</dd>" a b ) assoc) ++
   printf "</dl>"
 
-renderFriend :: Friend -> [(String,String)]
-renderFriend friend = 
-  
-  [("Name:", name friend)] ++
-  [("Uid:",  show $(uid friend))] ++
-  whenJust (\f->  [("Birthday:",  f)])  (birthday friend) ++ 
-  whenJust (\f->  [("Music:",  f)])  (music friend) ++ 
-  whenJust (\f->  [("TV:",  f)])  (tv friend) ++ 
-  whenJust (\f->  [("Books:",  f)])  (books friend) ++ 
-  whenJust (\f->  [("Quotations:",  f)])  (quotes friend) ++ 
-  whenJust (\f->  [("About:",  f)])  (about_me friend)
-  
-renderEvent event = 
-  [("Name:",  E.name event)] ++
-  whenJust (\f-> [("Tagline:", f)]) (E.tagline event) ++ 
-  whenJust (\f-> [("Description:", f)]) (E.description event) 
-  
+renderJustsOnX :: [(String, a -> Maybe String)] -> a -> [(String, String)]
+renderJustsOnX ls x = [(label, y) | (label, Just y) <- map (second ($ x)) ls]
 
-nameToUid user fname = 
-    if isDigit $ head fname then 
-        return $ Just $ read fname 
+renderFriend :: Friend -> [(String, String)]
+renderFriend = renderJustsOnX [
+  ("Name:",       Just . name),
+  ("Uid:",        Just . show . uid),
+  ("Birthday:",   birthday),
+  ("Music:",      music),
+  ("TV:",         tv),
+  ("Books:",      books),
+  ("Quotations:", quotes),
+  ("About:",      about_me)]
+
+renderEvent = renderJustsOnX [
+  ("Name:",        Just . E.name),
+  ("Tagline:",     E.tagline),
+  ("Description:", E.description)]
+
+nameToUid user fname =
+    if isDigit $ head fname then
+        return $ Just $ read fname
     else do
   trie <- FF.fetchFriendStorage user
-  case FF.getFriendsWithName trie fname of 
+  case FF.getFriendsWithName trie fname of
     [(_, f)] -> return $ Just $ FF.uid f
-    [] -> do 
+    [] -> do
       io $ putStrLn $ "No friends name " ++ fname
       return Nothing
     ls -> do
-      io $ putStrLn ("Many users with names starting with " ++ fname) 
+      io $ putStrLn ("Many users with names starting with " ++ fname)
       io $ mapM_ (\(_,f) -> printf "%d - %s\n"  (FF.uid f) (FF.name f)) $ ls
       return Nothing
 
 
-showHTML rendered = do 
+showHTML rendered = do
   file <- openFile "/tmp/fbtextbook" WriteMode
   hPutStrLn file $ rendered
   hClose file
   system "cat /tmp/fbtextbook | w3m -T text/html"
-  return () 
+  return ()
 
 
 fbFinger = FbCmd "finger" "Get a friend's info" $ \ (opts, [fname]) -> do
   user <- ensureLogin
   uid <- nameToUid user fname
-  case uid of 
-    Just uid -> do 
+  case uid of
+    Just uid -> do
         friend <- fetchFriend uid
         io $ showHTML $ ddize $ renderFriend friend
-    Nothing -> 
-        return () 
+    Nothing ->
+        return ()
 
 fbEvent = FbCmd "events" "Get all my events" $ \ (opts, _) -> do
   user <- ensureLogin
@@ -251,14 +249,14 @@ fbEvent = FbCmd "events" "Get all my events" $ \ (opts, _) -> do
 fbProfilePic = FbCmd "profilepic" "See a profie pic" $ \ (opts, [fname]) -> do
   user <- ensureLogin
   fuid <- nameToUid user fname
-  case fuid of 
-    Just fuid -> do 
+  case fuid of
+    Just fuid -> do
              friend <- fetchFriend fuid
-             io $ case pic_big friend of 
+             io $ case pic_big friend of
                  Just pic -> do {system ("jp2a --colors \"" ++ pic ++ "\"");return ()}
                  Nothing  -> putStrLn "No pic available"
-    Nothing -> 
-        return () 
+    Nothing ->
+        return ()
 
 
 
@@ -278,8 +276,8 @@ fbPoke = FbCmd "profile" "Show profile page information" . const $
 fbWall = FbCmd "wall" "Write on a friends wall" $ \ (opts, [fname, message]) -> do
   user <- ensureLogin
   ensurePermission "publish_stream"
-  uid <- nameToUid user fname 
-  case uid of 
+  uid <- nameToUid user fname
+  case uid of
     Just uid -> do
         Client.stream_publish message $ Just uid
         io $ printf "Wrote \"%s\" on to: %s\n" message uid
@@ -295,9 +293,9 @@ fbStream = FbCmd "stream" "Get your stream" $ \ (opts, _) -> do
   user <- ensureLogin
   ensurePermission "read_stream"
   (stream, idmap) <- fetchStream user
-  
+
   io $ showHTML $ ddize $ mapMaybe (format idmap) stream
-    where format idmap (JSObject sobj) = case get_field sobj "message" of 
+    where format idmap (JSObject sobj) = case get_field sobj "message" of
                                  Just (JSString m) -> Just $ ((idmap ! (sobj !^ "actor_id")), (fromJSString m))
                                  _ -> Nothing
           format  _ _= Nothing
@@ -306,13 +304,13 @@ fbStream = FbCmd "stream" "Get your stream" $ \ (opts, _) -> do
 fbUserStream = FbCmd "userstream" "Get a users stream" $ \ (opts, [fname]) -> do
   user <- ensureLogin
   ensurePermission "read_stream"
-  uid <- nameToUid user fname 
-  case uid of 
+  uid <- nameToUid user fname
+  case uid of
     Just uid -> do
         (stream, idmap) <- fetchUserStream uid
         io $ showHTML $ ddize $ mapMaybe (format idmap) stream
     Nothing -> return ()
-   where format idmap (JSObject sobj) = case get_field sobj "message" of 
+   where format idmap (JSObject sobj) = case get_field sobj "message" of
                                                Just (JSString m) -> Just $ ((idmap ! (sobj !^ "actor_id")), (fromJSString m))
                                                _ -> Nothing
          format  _ _= Nothing
